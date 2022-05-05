@@ -11,35 +11,113 @@ library(tidyverse)
 ```
 
 ```{r}
-dat <- 
+dat_raw <- 
   rio::import(
     here::here('data', 'FF_allwaves_2020.sav')
-    ) %>% 
-  #slice(1:1000) %>% 
+    ) 
+
+
+dat <- 
+  dat_raw %>% 
+  select(
+    where(
+      ~sum(!is.na(.x)) > 0
+    )
+  ) %>% 
   sjlabelled::label_to_colnames() %>% 
   # converts the values to lables
-  #sjlabelled::as_label() %>% 
+  sjlabelled::as_label() %>% 
   janitor::clean_names()
+
+meta_data <- 
+  rio::import(
+    here::here('data', 'FFMetadata_v09 (1).csv')
+  )
+
 ```
 
 ```{r}
-#install.packages('sjlabelled')
-# 
-# dat_small <- 
-#   dat %>% 
-#   janitor::clean_names() %>% 
-#   select(contains('police'), contains('race')) %>% 
-#   na_if(-3) %>% 
-#   # -9 = not in wave 
-#   na_if(-9) %>% 
-#   # -1 = refuse
-#   na_if(-1) %>% 
-#   select(
-#     what_is_your_race, 
-#     what_is_your_race_2, 
-#     what_is_your_race_3, 
-#     e10_ever_been_stopped_by_the_police
-#     )
+
+get_vars_containing <- 
+  function(
+    pattern_of_interest, 
+    meta_data_df = meta_data
+  ){
+    topic_vector <- 
+      {{meta_data_df}} %>% 
+      distinct(topics) %>% 
+      pull(topics)
+    
+    topic_vector_subset <- 
+      topic_vector[grepl(pattern = pattern_of_interest, x = topic_vector)] 
+    
+    return(topic_vector_subset)
+  }
+
+subset_raw_dataset_names <- 
+  function(
+    topic_vector_subset,
+    #wave_number,
+    meta_data_df = meta_data,
+    listed_respondent,
+    listed_source = 'questionnaire'
+  ){
+
+    {{meta_data_df}} %>% 
+      filter( 
+        topics %in% topic_vector_subset &
+         # wave %in% paste0('Year ', wave_number) &
+          !is.na(obs) & 
+          source == listed_source &
+          respondent == listed_respondent
+        ) %>% 
+      pull(new_name) 
+    
+  }
+```
+
+```{r}
+# meta_data %>% 
+#   distinct(subtopics, .keep_all = TRUE) %>% 
+#   pull(topics)
+
+tmp_vector <- get_vars_containing('Legal system')
+
+tmp_var_names <- 
+  subset_raw_dataset_names(
+    topic_vector_subset = tmp_vector,
+    #wave_number = 15, 
+    listed_respondent = 'Child'
+    ) 
+
+dat_raw %>% 
+  select(
+    idnum,
+    all_of(tmp_var_names)
+    ) %>% 
+  tibble() %>% 
+  View()
+  #sjlabelled::label_to_colnames() %>% 
+  #janitor::clean_names()
+  # converts the values to lables
+  #sjlabelled::as_label() %>% 
+
+```
+
+```{r}
+meta_data %>% 
+  filter(respondent == 'Child') %>% 
+  distinct(probe) %>% 
+  View()
+```
+
+
+```{r}
+dat_raw$k6e12[dat_raw$k6e12 > 1]
+```
+
+
+```{r}
 d_analysis <- 
   dat %>% 
   select(
@@ -60,6 +138,7 @@ tree1 <-
     formula = e12_number_of_times_stopped_by_the_police ~ 1 | constructed_youth_self_description_of_race_ethnicity, 
     data = d_analysis
     )
+
 d_analysis %>% count(e12_number_of_times_stopped_by_the_police,
     constructed_youth_self_description_of_race_ethnicity)
 
@@ -94,7 +173,6 @@ c_dat <-
   select(matches('^c[0-9]+')) %>% 
   names()
 ```
-
 
 ```{r}
 c_dat

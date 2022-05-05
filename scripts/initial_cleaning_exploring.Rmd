@@ -1,0 +1,102 @@
+---
+title: "cleaning-fragile-families"
+author: "Christopher Loan"
+date: '2022-05-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+dat <- 
+  rio::import(
+    here::here('data', 'FF_allwaves_2020.sav')
+    ) %>% 
+  #slice(1:1000) %>% 
+  sjlabelled::label_to_colnames() %>% 
+  # converts the values to lables
+  #sjlabelled::as_label() %>% 
+  janitor::clean_names()
+```
+
+```{r}
+#install.packages('sjlabelled')
+# 
+# dat_small <- 
+#   dat %>% 
+#   janitor::clean_names() %>% 
+#   select(contains('police'), contains('race')) %>% 
+#   na_if(-3) %>% 
+#   # -9 = not in wave 
+#   na_if(-9) %>% 
+#   # -1 = refuse
+#   na_if(-1) %>% 
+#   select(
+#     what_is_your_race, 
+#     what_is_your_race_2, 
+#     what_is_your_race_3, 
+#     e10_ever_been_stopped_by_the_police
+#     )
+d_analysis <- 
+  dat %>% 
+  select(
+    e12_number_of_times_stopped_by_the_police,
+    constructed_youth_self_description_of_race_ethnicity
+    ) %>% 
+  mutate(
+    constructed_youth_self_description_of_race_ethnicity = 
+      factor(constructed_youth_self_description_of_race_ethnicity)
+    ) %>% 
+  na_if(-9) %>% 
+  na_if(-6) %>% 
+  na_if(-3) %>% 
+  na_if(-2) 
+
+tree1 <- 
+  lmtree(
+    formula = e12_number_of_times_stopped_by_the_police ~ 1 | constructed_youth_self_description_of_race_ethnicity, 
+    data = d_analysis
+    )
+d_analysis %>% count(e12_number_of_times_stopped_by_the_police,
+    constructed_youth_self_description_of_race_ethnicity)
+
+```
+
+```{r}
+d_analysis %>% 
+  ggplot(
+    aes(
+      x = e12_number_of_times_stopped_by_the_police,
+      y = constructed_youth_self_description_of_race_ethnicity)
+  ) + 
+  ggridges::geom_density_ridges()
+```
+
+
+
+```{r}
+# dat %>% 
+#   select(contains('race'), contains('police')) 
+#   have_you_ever_been_stopped_by_police_non_traffic_offense,
+#   b69_youth_ever_been_stopped_by_police,
+#   e11_age_first_time_stopped_by_police_years,
+#   e12_number_of_times_stopped_by_the_police,
+  
+```
+
+```{r}
+c_dat <- 
+  dat %>% 
+  # select all that start with c and then 1 or more number
+  select(matches('^c[0-9]+')) %>% 
+  names()
+```
+
+
+```{r}
+c_dat
+```
+

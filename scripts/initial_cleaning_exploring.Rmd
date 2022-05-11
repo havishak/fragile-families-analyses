@@ -25,7 +25,7 @@ dat <-
     )
   ) %>% 
   sjlabelled::label_to_colnames() %>% 
-  # converts the values to lables
+  # converts the values to labels
   sjlabelled::as_label() %>% 
   janitor::clean_names()
 
@@ -33,6 +33,7 @@ meta_data <-
   rio::import(
     here::here('data', 'FFMetadata_v09 (1).csv')
   )
+
 
 ```
 
@@ -74,6 +75,7 @@ subset_raw_dataset_names <-
       pull(new_name) 
     
   }
+
 ```
 
 ```{r}
@@ -141,7 +143,7 @@ tree1 <-
 
 d_analysis %>% count(e12_number_of_times_stopped_by_the_police,
     constructed_youth_self_description_of_race_ethnicity)
-
+dat %>% head() %>% View()
 ```
 
 ```{r}

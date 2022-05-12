@@ -1,0 +1,430 @@
+---
+title: "targeted_cleaning"
+author: "Christopher Loan"
+date: '2022-05-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+dat_raw <- 
+  rio::import(
+    here::here('data', 'FF_allwaves_2020.sav')
+    ) 
+
+meta_data <- 
+  rio::import(
+    here::here('data', 'FFMetadata_v09 (1).csv')
+  )
+```
+
+
+```{r}
+subset_of_scales <-
+  c('Delinquent Behavior',
+    'Material Hardship',
+    'Adolescent Extracurricular and Community Involvement',
+    'Home Observation for Measurement of the Environment',
+    'Legal Cynicism'
+    )
+
+vars_to_clean <- 
+  meta_data %>% 
+  filter(
+    scale %in% subset_of_scales &
+      wave == 'Year 15'
+    ) %>% 
+  select(new_name, scale, source, respondent, wave)
+
+other_var_names <- 
+  meta_data %>% 
+  filter( 
+    subtopics == 'police contact and attitudes' &
+      !is.na(obs) 
+    ) %>% 
+  pull(new_name) 
+
+dat_subsetted <- 
+  dat_raw %>% 
+  select(vars_to_clean$new_name, idnum, other_var_names, starts_with('ck6'), k6e10)
+```
+
+```{r}
+dat_to_clean <- 
+  dat_subsetted %>% 
+  select(
+   idnum,
+   # legal cynicism
+   starts_with('k6e'),
+   # material hardship
+   paste0('p6j', 37:47), 
+   # delinquent behavior (teen self-report)
+   paste0('k6d61', letters[1:13]), 
+   # delinquent behavior (teen peer-report)
+   paste0('k6d62', letters[1:10]),
+   # Adolescent Extracurricular and Community Involvement
+   paste0('k6b22', letters[1:6]), 
+   # Home Observation for Measurement of the Environment
+   paste0('o6e', 1:11), 
+   'o6e11', 'o6e12a', 'o6e12b', 
+   paste0('o6e', 13:17), 
+   paste0('o6e18', letters[1:9]),
+   # police info
+   other_var_names
+  ) %>% 
+  mutate(
+    k6e12 = if_else(k6e10 == 2, 0, k6e12)
+  )
+#dat_raw$k6e12
+constructed_factors <- 
+  dat_subsetted %>% 
+  select(
+    starts_with('ck6')
+  ) %>% 
+  na_if(-9) %>% 
+  na_if(-8) %>% 
+  na_if(-7) %>% 
+  na_if(-6) %>% 
+  na_if(-5) %>% 
+  na_if(-4) %>% 
+  na_if(-3) %>% 
+  na_if(-2) %>% 
+  na_if(-1) %>% 
+  summarize(
+    across(
+      .cols = everything(),
+      .fns = ~length(unique(.x))
+    )
+    ) %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = 'variable_name',
+    values_to = 'unique_responses'
+    ) %>% 
+  arrange(desc(unique_responses)) %>% 
+  filter(unique_responses < 13 & variable_name != 'ck6yagey') %>% 
+  pull(variable_name)
+```
+
+```{r}
+tmp_constructed_dat <- 
+  dat_subsetted %>% 
+  select(
+    idnum,
+    starts_with('ck6')
+  ) %>% 
+  na_if(-9) %>% 
+  na_if(-8) %>% 
+  na_if(-7) %>% 
+  na_if(-6) %>% 
+  na_if(-5) %>% 
+  na_if(-4) %>% 
+  na_if(-3) %>% 
+  na_if(-2) %>% 
+  na_if(-1) %>% 
+  mutate(
+    across(
+      .cols = all_of(constructed_factors), 
+      .fns = sjlabelled::as_label
+    ), 
+    idnum = as.numeric(idnum)
+  )
+# dat_to_clean %>% 
+#   sjlabelled::as_label() %>% 
+#   count(
+#     k6e10, k6e12
+#   )
+```
+
+```{r}
+tmp_combined_dat <- 
+  dat_to_clean %>% 
+  na_if(-9) %>% 
+  na_if(-8) %>% 
+  na_if(-7) %>% 
+  na_if(-6) %>% 
+  na_if(-5) %>% 
+  na_if(-4) %>% 
+  na_if(-3) %>% 
+  na_if(-2) %>% 
+  na_if(-1)
+
+# this tells us that most are categorical
+number_of_responses_by_var <- 
+  tmp_combined_dat %>% 
+  summarize(
+    across(
+      .cols = everything(),
+      .fns = ~length(unique(.x))
+    )
+    ) %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = 'variable_name',
+    values_to = 'unique_responses'
+    ) %>% 
+  arrange(desc(unique_responses))
+
+# find out which need to be dichotomous
+# other categorical will be ordered
+
+dichot_vector <- 
+  number_of_responses_by_var %>% 
+  # this is 3 and not 2 because of NA
+  filter(unique_responses == 3) %>% 
+  pull(variable_name) 
+
+three_category_vector <- 
+  number_of_responses_by_var %>% 
+  filter(unique_responses == 4) %>%
+  pull(variable_name)
+
+four_category_vector <- 
+  number_of_responses_by_var %>% 
+  filter(unique_responses == 5) %>%
+  pull(variable_name)
+
+five_category_vector <- 
+  number_of_responses_by_var %>% 
+  filter(unique_responses == 6) %>%
+  pull(variable_name)
+
+# tmp_combined_dat %>%
+#   select(all_of(four_category_vector)) %>%
+#   map(.x = ., .f = ~attr(.x, 'labels'))
+# 
+# number_of_responses_by_var %>% 
+#   count(unique_responses)
+```
+
+```{r}
+cleaned_tmp_combined_dat <- 
+  tmp_combined_dat %>% 
+  mutate(
+    across(
+      .cols = c(idnum, k6e12, k6e11, k6e20a),
+      .fns = as.numeric
+    ), 
+    across(
+      .cols = all_of(dichot_vector), 
+      .fns = sjlabelled::as_label
+    ), 
+    across(
+      .cols = paste0('k6e7', letters[2:5]),
+      .fns = 
+        ~factor(
+          .x,
+          levels = c(4, 3, 2, 1),
+          labels = 
+            c('Strongly disagree', 
+              'Somewhat disagree', 
+              'Somewhat agree', 
+              'Strongly agree'), 
+          ordered = TRUE
+        )
+    ), 
+    across(
+      .cols = paste0('k6d61', letters[1:13]),
+      .fns = 
+        ~factor(
+          .x,
+          levels = 1:4,
+          labels = c('Never', '1 or 2 times', '3 or 4 times', '5 or more times'), 
+          ordered = TRUE
+        )
+    ), 
+    across(
+      .cols = all_of(three_category_vector),
+      .fns = 
+        ~factor(
+          .x,
+          levels = c(3, 2, 1),
+          labels = c('Never', 'Sometimes', 'Often'), 
+          ordered = TRUE
+        )
+    ), 
+    across(
+      .cols = all_of(five_category_vector),
+      .fns = 
+        ~factor(
+          .x,
+          levels = 0:4,
+          labels = 
+            c('Never', 
+              'Less than once a month', 
+              'At least once a month', 
+              'Once a week', 
+              'Several times a week'), 
+          ordered = TRUE
+        )
+    )
+  ) %>% 
+  tibble() 
+```
+
+```{r}
+cleaned_combined_dat <-
+  full_join(
+    cleaned_tmp_combined_dat,
+    tmp_constructed_dat
+    )
+```
+
+
+```{r}
+imputed_dataset <- 
+  mice::mice(
+    cleaned_combined_dat, 
+    m = 1
+    )
+
+dat_imputed <- 
+  mice::complete(imputed_dataset) %>% 
+  tibble()
+```
+
+```{r}
+library(partykit)
+```
+
+```{r}
+mod_dat <- 
+  dat_imputed %>% 
+  select(
+     where(
+      ~sum(is.na(.x)) == 0
+    )
+  )
+
+mod_dat %>%
+  #sjlabelled::label_to_colnames() %>% 
+  names() %>%
+  paste0(collapse = ' + ')
+
+formula1 <- 
+  Formula::as.Formula(
+    'k6e12 ~ 1 | k6e7b + k6e7c + k6e7d + k6e7e  + k6e18 + k6e19 + k6e20 + k6e20a + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + ck6ethrace + ck6yagey + ck6kint + ck6tele + ck6source + ck6pcgrel + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6conf2a + ck6cflag + ck6intmon + ck6hap + ck6cbmi + ck6bmiz + ck6bmip + ck6cwtlb + ck6chtcm + ck6waz + ck6wap + ck6haz + k6d61a + k6d61b + k6d61c + k6d61d + k6d61f + k6d61g' #k6e11 + k6d61e
+  )
+
+
+formula2 <- 
+  Formula::as.Formula(
+    'k6e12 ~ 1 + ck6ethrace | k6e7b + k6e7c + k6e7d + k6e7e  + k6e18 + k6e19 + k6e20 + k6e20a + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6d61a + k6d61b + k6d61c + k6d61d + k6d61e + k6d61f + k6d61g + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + ck6yagey'#ck6kint + ck6tele + ck6source + ck6pcgrel + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6conf2a + ck6cflag + k6e11 + ck6intmon + ck6hap + ck6cbmi ck6bmiz + ck6bmip ck6cwtlb + ck6chtcm + ck6waz + ck6wap + ck6haz'
+  )
+
+```
+
+
+```{r}
+tree1 <- 
+  lmtree(
+    formula = 
+      formula1,
+    data = cleaned_combined_dat, 
+    # dat_imputed,
+     minsize = 0.01*nrow(cleaned_combined_dat)
+  )
+
+plot(tree1)
+
+dat_raw$k6d61d
+dat_raw$k6d61d
+table(cleaned_combined_dat$ck6ethrace, cleaned_combined_dat$k6e12)
+```
+
+```{r}
+splitting1 <- partykit:::.list.rules.party(tree1)
+
+splitting_labs1 <-
+  tibble(
+    node = names(splitting1),
+    raw_rules = splitting1
+    ) %>%
+  mutate(
+    split_rules = gsub(pattern = '\"', replacement = '', x = raw_rules),
+    split_rules = gsub(pattern = '%in%', replacement = '=', x = split_rules)
+  )
+
+split_labs_list1 <- str_split(splitting_labs1$split_rules, pattern = ' & ')
+
+names(split_labs_list1) <- names(splitting1) #paste0(‘Node_‘, names(splitting))
+
+cleaned_name_list1 <-
+  split_labs_list1 %>%
+  map(
+    ~str_extract(string = .x,
+      pattern =
+        paste0(
+          '^.*(= | ','> | ', '< | ', '<= | ', '>= )*')
+      )
+    )
+
+
+plot_names1 <-
+  tibble(
+    node = names(cleaned_name_list1),
+    vars_labs = map_chr(.x = cleaned_name_list1, .f = ~paste0(.x, collapse = '\n'))
+  )
+
+summary(tree1) %>%
+  map_dfr(broom::tidy, .id = 'node') %>%
+  full_join(plot_names1) %>%
+  mutate(node = as.numeric(node)) %>%
+  ggplot(
+    aes(
+      y = fct_reorder(vars_labs, desc(node)),
+      x = estimate,
+      color = term,
+      xmin = estimate - 1.96*std.error,
+      xmax = estimate + 1.96*std.error
+    )
+  ) +
+  geom_vline(
+    xintercept = 0,
+    color = 'black',
+    size = 1.3,
+    alpha = 0.5
+    ) +
+  geom_errorbar(
+    aes(group = term),
+    width =  0.3,
+    #position = position_dodge(width = 0.5),
+    ) +
+  geom_point(
+    size = 5,
+    alpha = 0.6,
+    #position = position_dodge(width = 0.5),
+  ) +
+  labs(
+    y = 'Node',
+    title = 'Model-Based Recursive Partitioning Estimates',
+    caption = 'Circles = Estimates | Error Bars = 1.96 * Std. Error'
+    )# + facet_wrap(vars(fct_reorder(term, estimate)))
+
+```
+
+```{r}
+plot(tree1)
+```
+
+
+```{r}
+summary(tree1) %>% 
+  map_dfr(broom::tidy, .id = 'node') %>% 
+  ggplot(
+    aes(
+      x = estimate,
+      y = fct_reorder(node, estimate)
+    )
+  ) +
+  geom_col()
+```
+
+```{r}
+dat_raw$ck6intmon
+```
+

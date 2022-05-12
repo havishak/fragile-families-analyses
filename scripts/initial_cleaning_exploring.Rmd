@@ -10,6 +10,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
+* Delinquent Behavior
+* Material Hardship 
+* Adolescent Extracurricular and Community Involvement
+* Home Observation for Measurement of the Environment (HOME) 
+* Legal Cynicism (hesitate if in same wave) 
+
+
 ```{r}
 dat_raw <- 
   rio::import(
@@ -33,12 +40,9 @@ meta_data <-
   rio::import(
     here::here('data', 'FFMetadata_v09 (1).csv')
   )
-
-
 ```
 
 ```{r}
-
 get_vars_containing <- 
   function(
     pattern_of_interest, 
@@ -78,11 +82,8 @@ subset_raw_dataset_names <-
 
 ```
 
-```{r}
-# meta_data %>% 
-#   distinct(subtopics, .keep_all = TRUE) %>% 
-#   pull(topics)
 
+```{r}
 tmp_vector <- get_vars_containing('Legal system')
 
 tmp_var_names <- 

@@ -5,6 +5,10 @@ date: '2022-05-11'
 output: html_document
 ---
 
+
+# might have to change df with 
+# https://www.r-bloggers.com/2015/09/linear-models-with-weighted-observations/
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
@@ -50,7 +54,13 @@ other_var_names <-
 
 dat_subsetted <- 
   dat_raw %>% 
-  select(vars_to_clean$new_name, idnum, other_var_names, starts_with('ck6'), k6e10)
+  select(
+    vars_to_clean$new_name, 
+    idnum, 
+    other_var_names, 
+    starts_with('ck6'), 
+    k6e10, 
+    h6a8)
 ```
 
 ```{r}
@@ -74,7 +84,9 @@ dat_to_clean <-
    paste0('o6e', 13:17), 
    paste0('o6e18', letters[1:9]),
    # police info
-   other_var_names
+   other_var_names, 
+   #darkness of skin
+   h6a8
   ) %>% 
   mutate(
     k6e12 = if_else(k6e10 == 2, 0, k6e12)
@@ -266,6 +278,7 @@ cleaned_tmp_combined_dat <-
   tibble() 
 ```
 
+
 ```{r}
 cleaned_combined_dat <-
   full_join(
@@ -279,13 +292,48 @@ cleaned_combined_dat <-
 imputed_dataset <- 
   mice::mice(
     cleaned_combined_dat, 
-    m = 1
+    m = 5,
+    seed = 2022
     )
 
 dat_imputed <- 
-  mice::complete(imputed_dataset) %>% 
+  mice::complete(imputed_dataset, 3) %>% 
   tibble()
 ```
+
+```{r}
+#saveRDS(imputed_dataset, here::here('data', 'multiple_imputation_seed_2022'))
+```
+
+```{r}
+
+# can do zero inflated poisson with `{pscl}` package
+# use the k6e12 outcome for that
+
+lm1 <- 
+  cleaned_combined_dat %>% 
+  mutate(age_c_scale = scale(ck6yagey)[,1]) %>% 
+  glm(
+    data = ., 
+    formula = k6e10 ~ 0 + ck6haz + ck6waz + ck6ethrace, 
+# ck6yagey + ck6cwtlb + ck6chtcm +
+    family = 'binomial'
+  )
+
+summary(lm1)
+
+  
+
+# cleaned_combined_dat %>% 
+#   ggplot(aes(x = k6e12)) + geom_density() + lims(x = c(1,20))
+
+broom::tidy(lm1) %>% 
+  mutate(
+    OR = exp(estimate),
+    p.value = if_else(p.value < 0.001, '<0.001', paste0(round(p.value, 3)))
+    )
+```
+
 
 ```{r}
 library(partykit)
@@ -307,13 +355,13 @@ mod_dat %>%
 
 formula1 <- 
   Formula::as.Formula(
-    'k6e12 ~ 1 | k6e7b + k6e7c + k6e7d + k6e7e  + k6e18 + k6e19 + k6e20 + k6e20a + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + ck6ethrace + ck6yagey + ck6kint + ck6tele + ck6source + ck6pcgrel + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6conf2a + ck6cflag + ck6intmon + ck6hap + ck6cbmi + ck6bmiz + ck6bmip + ck6cwtlb + ck6chtcm + ck6waz + ck6wap + ck6haz + k6d61a + k6d61b + k6d61c + k6d61d + k6d61f + k6d61g' #k6e11 + k6d61e
+    'k6e12 ~ 1 | k6e7b + k6e7c + k6e7d + k6e7e + k6e18 + k6e19 + k6e20 + k6e20a + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6d61a + k6d61b + k6d61c + k6d61d + k6d61e + k6d61f + k6d61g + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + h6a8 + ck6kint + ck6intmon + ck6tele + ck6source + ck6pcgrel + ck6yagey + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6ethrace + ck6conf2a + ck6cwtlb + ck6chtcm + ck6cbmi + ck6bmiz + ck6bmip + ck6waz + ck6wap + ck6haz + ck6hap + ck6cflag' #k6e11 + k6e10
   )
 
 
 formula2 <- 
   Formula::as.Formula(
-    'k6e12 ~ 1 + ck6ethrace | k6e7b + k6e7c + k6e7d + k6e7e  + k6e18 + k6e19 + k6e20 + k6e20a + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6d61a + k6d61b + k6d61c + k6d61d + k6d61e + k6d61f + k6d61g + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + ck6yagey'#ck6kint + ck6tele + ck6source + ck6pcgrel + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6conf2a + ck6cflag + k6e11 + ck6intmon + ck6hap + ck6cbmi ck6bmiz + ck6bmip ck6cwtlb + ck6chtcm + ck6waz + ck6wap + ck6haz'
+    'k6e12 ~ 1 + k6d62a + k6d62b + k6d62c + k6d62d + k6d62e + k6d62f + k6d62g + k6d62h + k6d62i + k6d62j + k6d61a + k6d61b + k6d61c + k6d61d + k6d61e + k6d61f + k6d61g + k6d61h + k6d61i + k6d61j + k6d61k + k6d61l + k6d61m | k6e7b + k6e7c + k6e7d + k6e7e + p6j37 + p6j38 + p6j39 + p6j40 + p6j41 + p6j42 + p6j43 + p6j44 + p6j45 + p6j46 + p6j47 + k6b22a + k6b22b + k6b22c + k6b22d + k6b22e + k6b22f + o6e1 + o6e2 + o6e3 + o6e4 + o6e5 + o6e6 + o6e7 + o6e8 + o6e9 + o6e10 + o6e11 + o6e12a + o6e12b + o6e13 + o6e14 + o6e15 + o6e16 + o6e17 + o6e18a + o6e18b + o6e18c + o6e18d + o6e18e + o6e18f + o6e18g + o6e18h + o6e18i + h6a8 + ck6kint + ck6intmon + ck6tele + ck6source + ck6pcgrel + ck6yagey + ck6yagem + ck6mcrel + ck6fcrel + ck6livar + ck6conf2a + ck6cwtlb + ck6chtcm + ck6cbmi + ck6bmiz + ck6bmip + ck6waz + ck6wap + ck6haz + ck6hap + ck6cflag' #k6e11 + k6e10 + k6e18 + k6e19 + k6e20 + k6e20a
   )
 
 ```
@@ -323,18 +371,47 @@ formula2 <-
 tree1 <- 
   lmtree(
     formula = 
-      formula1,
-    data = cleaned_combined_dat, 
-    # dat_imputed,
-     minsize = 0.01*nrow(cleaned_combined_dat)
+      formula2,
+    data = dat_imputed, 
+    #dat_imputed,
+    parm = 1,
+    minsize = 0.1*nrow(dat_imputed)
   )
 
 plot(tree1)
+cleaned_combined_dat$k6d62c
 
-dat_raw$k6d61d
-dat_raw$k6d61d
-table(cleaned_combined_dat$ck6ethrace, cleaned_combined_dat$k6e12)
+cleaned_combined_dat %>% 
+  group_by(ck6cflag) %>% 
+  count(k6e12) %>% 
+  ggplot(aes(x = k6e12, y = n, fill = ck6cflag)) +
+  geom_col(position = 'dodge') +
+  facet_wrap(
+    vars(ck6cflag)
+  ) +
+  lims(x = c(0, 20), y = c(0, 100))
 ```
+
+```{r}
+
+
+dat_raw$ck6ethrace
+
+cleaned_combined_dat %>% 
+  count(ck6ethrace)
+  #count(ck6ethrace, k6e12) %>% 
+  ggplot(
+    aes(
+      x = k6e12, 
+      #y = n,
+      fill = ck6ethrace
+    ) 
+  ) +
+  geom_histogram(bins = 20) +
+  theme(legend.position = 'bottom') +
+  facet_wrap(vars(ck6ethrace))
+```
+
 
 ```{r}
 splitting1 <- partykit:::.list.rules.party(tree1)
@@ -392,12 +469,12 @@ summary(tree1) %>%
   geom_errorbar(
     aes(group = term),
     width =  0.3,
-    #position = position_dodge(width = 0.5),
+    position = position_dodge(width = 0.5),
     ) +
   geom_point(
     size = 5,
     alpha = 0.6,
-    #position = position_dodge(width = 0.5),
+    position = position_dodge(width = 0.5),
   ) +
   labs(
     y = 'Node',
@@ -409,12 +486,14 @@ summary(tree1) %>%
 
 ```{r}
 plot(tree1)
+
 ```
 
 
 ```{r}
 summary(tree1) %>% 
   map_dfr(broom::tidy, .id = 'node') %>% 
+  filter(term == '(Intercept)') %>% 
   ggplot(
     aes(
       x = estimate,
@@ -425,6 +504,6 @@ summary(tree1) %>%
 ```
 
 ```{r}
-dat_raw$ck6intmon
+dat_raw$k6e7e
 ```
 

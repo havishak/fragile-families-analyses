@@ -1,7 +1,7 @@
 ---
 title: "Fragile Families - Data Cleaning and Subsetting"
 author: "Havi Khurana"
-date: "5/6/22"
+date: "5/29/22"
 output: html_document
 ---
 
@@ -12,140 +12,271 @@ knitr::opts_chunk$set(echo = TRUE,
                       warning = FALSE)
 ```
 
-I'm walking through the steps I followed for cleaning and subsetting the data for a different research question. The process may look similar for this project. 
 
 ```{r}
 library(tidyverse)
 library(here)
-library(rio)
 library(janitor)
 library(stringr)
+```
 
+
+```{r}
 #importing meta-data
-ff_meta <- import(here("data","FFMetadata_v09 (1).csv"))%>%
+ff_meta <- read.csv(here("data","FFMetadata_v09 (1).csv"))%>%
    clean_names() %>%
   as_tibble()
 ```
 
-The actual data file has more than 17000 variables. We'll use the meta-data file to select the variable of interest, and use the `ff_vars` vector to subset the actual data file.
-
-For this project, we're interested in:
-
-1. Demographic characteristics 
-a. self-reported race/ethnicity at age 15
-b. mother's report on gender at birth
-
-2. Scales:
-a. Self-Description Questionnaire (SDQ) - Information on internalizing and externalizing behaviors at age 9
-b. Delinquent Behavior Scale at age 9 and age 15
-c. Aggravation in parenting - collected for Baseline all years
-
-3. Outcomes from questionnaire
-a. If child suspended/expelled, and number of times suspended or expelled at age 9 (parent report) and at age 15 (parent and child)
+Scales to clean:
+- Child Behavior Problems (CBCL)
+- Self-Description Questionnaire (SDQ)
+- Teen Tobacco Use
+- Peer Bullying 
+- Trouble at School
 
 
 ```{r}
 #select scales
-scales <- c("Aggravation in Parents", 
-            "Self-Description Questionnaire (SDQ)",
-            "Delinquent Behavior") 
-
-ff_meta_subset <- ff_meta %>% 
-                #demographic characteristics - race/ethnicity
-                filter((topics == "Demographics" &
-                        str_detect(varlab,"self-description of race/ethnicity"))|
-                        #gender
-                        (subtopics == "sex/gender" &
-                        str_detect(varlab, "Focal baby's gender"))|
-                        #scales
-                        scale %in% scales|
-                        #outcomes from questionnaire
-                        (source == "questionnaire" & 
-                        subtopics == "student experiences" &
-                        str_detect(varlab,"suspen")))%>% 
-                #only include relevant columns
-                select(new_name, varlab, topics, subtopics, 
-                       type, scale, source, respondent, 
-                       survey, wave,
-                       starts_with("label"))
-
+scales_multiple <- c("Child Behavior Problems (CBCL)",
+                     "Peer Bullying")
+scales_once <- c("Self-Description Questionnaire (SDQ)",
+            "Teen Tobacco Use",
+            "Trouble at School")
 ```
 
-Our meta-data subset includes the following information:
 
-a. variable names corresponding to columns in the actual data set
-b. variable labels - actual question statement
-c. topics
-d. subtopic
-e. type - types of variable (continuous, categorical, etc.)
-f. scale - which scale was used. "" means no scale was used
-g. source 
-h. respondent
-i. survey
-j. wave - year and wave data was collected
-k. starts_with("label") - description of possible responses to questions and how they're coded.
+```{r}
+scale_vars <- ff_meta %>% 
+                filter(scale %in% scales_once |
+                    (scale %in% scales_multiple &
+                     wave == "Year 15")) %>%
+                select(new_name,
+                       varlab,
+                       scale,
+                       wave,
+                       respondent,
+                       survey)
 
+```
 
 ```{r}
 #use variable names to subset the dataset
 
-ff_vars <- ff_meta_subset$new_name
-
-ff <- import(here("data","FF_allwaves_2020.sav")) %>% 
+ff <- haven::read_sav(here("data","FF_allwaves_2020.sav")) %>% 
     clean_names()
 
 ff_sub <- ff %>% 
     select(idnum, #identifier 
-           all_of(ff_vars)) %>%  #our selected variables
+           all_of(scale_vars$new_name)) %>%  #our selected variables
     as_tibble()
 
+#assigning attributes to variables
+
+var <-colnames(ff_sub)[-1]
+atr <- c("wave", "respondent", "scale", "survey")    #can add more meta-data info that we want readily accesible
+
+
+for(i in seq_along(var)){
+    for(j in seq_along(atr))
+    {
+        attr(ff_sub[[i+1]], atr[j]) <- as.character(
+            scale_vars %>% 
+                filter(new_name == var[i]) %>% 
+                select(atr[j]))
+        
+    }
+}
+
+#now, variable description can be seen as attributes(data$var_name)
+#attributes(ff_sub$k6d45)
+
+#export(ff_sub, here("data","ff_sub.rda"))
 ```
+
 
 ```{r, eval = FALSE}
-#let's save the subsetted df so that we don't have to clean each time
-
-#export(ff_sub, here("data","ff_sub.Rda"))
-
-#ff_sub <- import(here("data","ff_sub.Rda"))
+ff_sub <- rio::import(here("data","ff_sub.rda"))
 ```
 
-The variables (columns) have the following attributes:
+Documentation on scales:
 
-a. label: variable label
-b. names: possible responses for a question
+- CBCL 
+1. Collected 4 times, in year 3, 5, 9, and 15. 
+2. Information in year 3 (childcare provider-64Q and primary caregiver-55Q), 5 (primary caregiver - 53Q and mother - 32Q), 9 (primary caregiver - 111 Qs), 15 (primary caregiver - 34 Qs)
+3. 3-point Likert scale
+4. Have seven sub-scales -- only cleaning for year 15
+5. Some similar items over different years
+6. Guide for year 15: pg 48
+
+- SDQ: 
+1. Collected once in year 9 
+2. 14 items 
+3. 4-point Likert scale: 0-3 likert scale: not at all true, somewhat true, mostly true, very true 
+4. Two sub-scales: internalizing and externalizing behavior
+5. Guide for year9: pg 54
+
+- Trouble at schoole: 
+1. Collected once in year 15. 
+2. 4 items. 
+3. 3-point Likert scale (1-3: Never, sometimes, often) an 7 = NA/Homeschooled 
+4. Guide for year 15: pg 58
+5. Composite score calculated
+
+- Peer bullying
+1. Collected twice year 9 and year 15
+2. 4 items 
+3. 4-point Likert scale (0-3)  
+4. Guide for year 15: pg 56
+5. Composite score calculated
+
+- Teen Tobacco Use: 
+1. Collected once in year 15
+2. 6 items 
+3. some are yes/no, some on frequency 
+4. Guide for year 15: pg 35
+5. Composite score not calculated
+
+I'll find composite scores for the 4 scales (except teen tobacco use), and keep the items from teen tobacco use in factor form as is. 
+
+Each subscale has three steps -
+1. Count number of missing
+2. Decision based on missing values - scale total can't be calculated, or calculate scale total
+3. Scale total - either sum or mean of responses
+
+Will use a function for each of these and call them to make scale/sub-scale totals
 
 ```{r}
-#let's join the meta data to the subset so that we know which scale it comes from
-
-ff_sub_long <- ff_sub %>% 
-    pivot_longer(
-        cols = -1,
-        names_to = "response"
-    ) %>% 
-    left_join(ff_meta, by = c("response" = "new_name"))
-
-```
-
-
-```{r, eval = FALSE}
-#Let's make some example plots
-
-plots <- ff_sub_long %>% 
-    filter(scale == "Self-Description Questionnaire (SDQ)" & value >=0) %>%
-    nest_by(varlab) %>% 
-    summarise(
-        plot = list(
-            ggplot(data, aes(x = as.factor(value)))+
-            geom_bar()+
-            labs(
-                title = glue::glue("{varlab}")
-            )   
-        )
+#all negative are NA. 7 means home-schooled and is also NA
+ff_sub_clean <- ff_sub %>%
+  mutate(
+    across(
+      .cols = everything(),
+      .fns = function(x) ifelse(x<0 | x == 7 , NA, x)
     )
+  ) 
 
-walk(plots$plot,print)
+#doing the above step stripped attributes. Assigning attributes again
+#give back the attributes
+attributes(ff_sub_clean) <- attributes(ff_sub)
+
+#one column is continuous, doing sjlabelled overwrites its values
+for (i in c(2:58, 60:63)){
+  attributes(ff_sub_clean[[i]]) <- attributes(ff_sub[[i]])
+}
+
+ff_sub_clean <- ff_sub_clean %>% 
+  sjlabelled::as_label()
+```
 
 
+```{r}
+#Functions - find missing values for each sub-scale
+count_missing <- function(vars){
+  temp <- ff_sub_clean %>% 
+  select(idnum,
+         vars) %>% 
+  mutate(
+    n_missing = apply(., 1, function(x) sum(is.na(x)))
+  )  
+  
+  temp
+}
+
+#Calculate composite score
+subscale_summary <- function(df, criteria = 0, operation = mean, adjust = 0){
+  temp <- df %>% 
+  pivot_longer(
+    cols = -c('idnum','n_missing'),
+    names_to = 'var',
+    values_to = 'val'
+  ) %>% 
+  mutate(
+    val = parse_number(as.character(val))
+  ) %>%
+  group_by(idnum, n_missing) %>% 
+  summarise(
+    score = ifelse(n_missing > as.numeric(criteria),
+                   NA,
+                   `operation`(val, na.rm = TRUE)
+                   )
+  ) %>% 
+  unique()
+  
+  temp$score - adjust
+}
+
+#Combine the two functions
+subscale_score <- function(vars, criteria = 0, operation = mean, adjust = 0){
+  temp <- count_missing(vars)
+  subscale_summary(temp, criteria, operation, adjust)
+}
 
 ```
+
+```{r}
+#subscale variables
+
+#vars argument for the function
+subscales <- list(
+sdq9_externalizing = paste0("k5g2",c(letters[c(2,4,6,8,13,14)])),
+sdq9_internalizing = paste0("k5g2",c(letters[c(1,3,5,7,9:12)])),
+cbcl15_aggresive = paste0("p6b",c(35, 37:39, 41:45, 57, 59)),
+cbcl15_anxious = paste0("p6b",c(36, 40, 52:54, 68)),
+cbcl15_attention = paste0("p6b",c(46:48)),
+cbcl15_rulebreaking = paste0("p6b",c(49:51, 60:64, 67)),
+cbcl15_socialproblem = "p6b56",
+cbcl15_thoughtproblem = "p6b55",
+cbcl15_withdrawn = paste0("p6b",c(65:66)),
+# cbcl15_internalizing = cbcl15_axious + cbcl_withdrawn,
+# clcb15_externalizing = cbcl15_aggresive + cbcl15_rulebreaking
+pb15 = paste0("k6b32",c(letters[c(1:2,5:6)])),
+tas15 = paste0("k6b21", c(letters[c(1:4)]))
+)
+
+#criteria - 2 missing allowed for externalizing and internalizing and 0 for others
+
+subscale_criteria <- c(2,2, rep(0,9))
+
+#adjust - cbcl mean score has to be reduced by 1
+
+subscale_adjust <- c(0,0, rep(1,7), 0, 0)
+```
+
+
+```{r}
+#making a dataframe with composite scores and responses for Tobacco Use Survey
+subscale_df <- data.frame(
+  idnum = c(1:4898)
+)
+
+for(i in seq_along(subscales)){
+   x <- subscale_score(subscales[[i]], 
+                 subscale_criteria[i],
+                 mean,
+                 subscale_adjust[i])
+   
+   subscale_df <- cbind(subscale_df, x)
+}
+
+#fix col names
+colnames(subscale_df)[2:12] <- attributes(subscales)$names
+
+```
+
+```{r}
+#Items from teen tobacco use
+ttu15 <- paste0("k6d",c(40, 44, 45)) #k6d41-43 has almost all missing values as most respondents skipped it. Therefore not including
+
+#this is the clean df that can be used for modelling
+subscale_df <- ff_sub_clean %>%
+  select(idnum, ttu15) %>% 
+  mutate(
+    idnum = as.numeric(idnum)
+  ) %>% 
+  right_join(subscale_df)
+
+  
+```
+
 

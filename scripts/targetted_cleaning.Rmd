@@ -63,6 +63,39 @@ dat_subsetted <-
     h6a8)
 ```
 
+
+```{r, eval = FALSE}
+#havi's code
+#meta-data var descriptions
+
+meta1 <- 
+    meta_data %>% 
+  filter(
+            (
+            scale %in% subset_of_scales &
+            wave == 'Year 15') |
+            (
+            subtopics == 'police contact and attitudes' &
+            !is.na(obs) 
+            )
+    ) %>% 
+  select(topics,
+         subtopics,
+         scale,
+         new_name, 
+         varlab,
+         type,
+         source, 
+         respondent, 
+         wave,
+         starts_with("label"))
+
+rio::export(meta1, here::here("data","meta1.csv"))
+
+```
+
+```
+
 ```{r}
 dat_to_clean <- 
   dat_subsetted %>% 

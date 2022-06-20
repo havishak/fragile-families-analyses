@@ -60,6 +60,39 @@ scale_vars <- ff_meta %>%
 
 ```
 
+```{r, eval = FASE}
+#meta-data var descriptions
+
+meta2 <- 
+    ff_meta %>% 
+        filter(scale %in% scales_once |
+            (scale %in% scales_multiple &
+             wave == "Year 15")) %>%
+        select(topics,
+             subtopics,
+             scale,
+             new_name, 
+             varlab,
+             type,
+             source, 
+             respondent, 
+             wave,
+             starts_with("label"))
+
+rio::export(meta2, here::here("data","meta2.csv"))
+
+variables <- rbind(
+    rio::import(here("data","meta1.csv")),
+    rio::import(here("data","meta2.csv"))
+)
+
+
+variables <- variables %>% 
+    select(-c(paste0("label",11:30)))
+
+rio::export(variables, here::here("data","variables.xlsx"))
+```
+
 ```{r}
 #use variable names to subset the dataset
 
